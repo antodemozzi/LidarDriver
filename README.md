@@ -1,132 +1,141 @@
 # LidarDriver
 
-Applicazione C++17 che acquisisce scansioni LiDAR da file CSV o da UDP e le
-gestisce tramite un buffer circolare FIFO. Il progetto è una base leggera per
-integrare una sorgente reale mantenendo separati acquisizione, validazione e
-logica del driver.
+LidarDriver is a C++17 application that acquires LiDAR scans from CSV files or
+UDP datagrams and stores them in a configurable circular FIFO buffer. The
+project provides a lightweight foundation for integrating real sensors while
+keeping acquisition, validation, and driver logic separate.
 
-## Funzionalità
+## Features
 
-- sorgente da file (`FileScanSource`) oppure da datagrammi UDP (`UdpScanSource`);
-- scansioni con timestamp, angolo iniziale e risoluzione;
-- valori mancanti o non validi rappresentati da una `Measurement` con
-  `valid == false`, mai come `0.0` (zero resta una misura valida);
-- normalizzazione alla dimensione attesa, con troncamento delle misure in più
-  e valori mancanti per quelle assenti;
-- buffer FIFO circolare con capacità configurabile;
-- query della misura più vicina a un angolo;
-- test automatici tramite CTest.
-- timeout configurabile sulla ricezione UDP;
-- eccezioni dedicate per buffer, parsing, file e UDP;
-- logging con livelli `info`, `warning` ed `error`;
-- frame UDP testuali con sequenza e timestamp oppure frame binari `LD1`.
+- CSV file and UDP datagram sources;
+- scan timestamps, start angles, resolutions, sequence numbers, and sensor IDs;
+- missing or invalid measurements represented as `Measurement.valid == false`,
+  never as `0.0` (zero remains a valid measurement);
+- scan normalization to the configured dimension, padding missing values and
+  truncating oversized scans;
+- configurable circular FIFO buffer;
+- nearest-supported-angle distance queries;
+- dedicated parsing, buffer, file, and UDP exceptions;
+- structured `info`, `warning`, and `error` logging;
+- text and binary `LD1` UDP frame formats;
+- automatic tests through CTest.
 
-## Formato dati
+## Data format
 
-Ogni riga del file o ogni datagramma UDP contiene una scansione CSV:
+Each file row or UDP datagram can contain a CSV scan:
 
 ```text
 1.03,0.17,4.89,,nan,3.08
 ```
 
-I valori devono essere finiti e non negativi. Un campo vuoto o `nan` è una
-misura non disponibile. Le scansioni possono avere dimensioni diverse: il
-driver le adatta alla risoluzione configurata.
+Values must be finite and non-negative. An empty field or `nan` represents an
+unavailable measurement. Scans may contain different numbers of measurements;
+the driver adapts them to the configured resolution.
 
-## Compilazione
-
-```powershell
-cmake -S . -B build
-cmake --build build
-ctest --test-dir build --output-on-failure
-```
-
-Su Windows viene collegata automaticamente `ws2_32` per il supporto UDP.
-
-## Utilizzo
-
-Modalità file, con termine alla fine della sorgente:
-
-```powershell
-.\build\LidarDriver.exe --file data\data.txt --resolution 0.5 --capacity 10
-```
-
-Per riutilizzare ciclicamente le scansioni:
-
-```powershell
-.\build\LidarDriver.exe --file data\data.txt --repeat
-```
-
-Per terminare le scansioni alla fine del file:
-
-```powershell
-.\build\LidarDriver.exe --file data\data.txt --no-repeat
-```
-
-Modalità UDP:
-
-```powershell
-.\build\LidarDriver.exe --udp 9000 --resolution 0.5 --start-angle 0
-```
-
-Un sensore o un programma esterno deve inviare datagrammi UDP verso la porta
-indicata, con una riga CSV per datagramma. La lettura UDP è bloccante: il
-comando `1` attende la prossima scansione con un timeout configurabile.
-
-Per impostare il timeout:
-
-```powershell
-.\build\LidarDriver.exe --udp 9000 --udp-timeout-ms 500
-```
-
-È supportato anche il frame testuale:
+Text UDP frames use the following format:
 
 ```text
 LIDAR1;seq=42;timestamp_ms=1700000000000;start=0;resolution=0.5;sensor=lidar-1|1.03,0.17,4.89
 ```
 
-Il formato binario usa il magic `LD1`, seguito da sequenza a 32 bit,
-timestamp in millisecondi a 64 bit, angolo iniziale e risoluzione come
-`double`, conteggio a 32 bit e misure `double` in little-endian.
+The binary UDP format starts with the `LD1` magic value, followed by:
 
-Opzioni disponibili:
+- sequence number: 32-bit little-endian integer;
+- timestamp: 64-bit little-endian integer, in milliseconds;
+- start angle: 64-bit little-endian `double`;
+- resolution: 64-bit little-endian `double`;
+- measurement count: 32-bit little-endian integer;
+- measurements: one 64-bit little-endian `double` per value.
 
-| Opzione | Descrizione |
+The binary frame has a 35-byte header. Negative, infinite, or otherwise invalid
+measurement values are converted to unavailable measurements.
+
+## Build
+
+Requirements:
+
+- CMake 3.16 or newer;
+- a C++17 compiler.
+
+```powershell
+cmake -S . -B build -DBUILD_TESTING=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+The Windows build automatically links `ws2_32` for UDP support.
+
+## Usage
+
+Use the CSV file source and stop at the end of the file:
+
+```powershell
+.\build\LidarDriver.exe --file data\data.txt --resolution 0.5 --capacity 10 --no-repeat
+```
+
+Reuse file scans cyclically:
+
+```powershell
+.\build\LidarDriver.exe --file data\data.txt --resolution 0.5 --repeat
+```
+
+Listen for UDP datagrams:
+
+```powershell
+.\build\LidarDriver.exe --udp 9000 --resolution 0.5 --start-angle 0
+```
+
+Set the UDP receive timeout:
+
+```powershell
+.\build\LidarDriver.exe --udp 9000 --udp-timeout-ms 500
+```
+
+A sensor or external process can send CSV, text-framed, or binary-framed data
+to the configured UDP port. The receive operation is limited by the configured
+timeout.
+
+## Command-line options
+
+| Option | Description |
 |---|---|
-| `--file PATH` | Usa un file CSV come sorgente |
-| `--udp PORT` | Ascolta datagrammi UDP |
-| `--resolution DEGREES` | Risoluzione tra `0.1` e `1.0` |
-| `--start-angle DEGREES` | Angolo iniziale della scansione |
-| `--capacity N` | Numero massimo di scansioni nel buffer |
-| `--no-repeat` | Non ricomincia il file quando raggiunge la fine |
-| `--repeat` | Ricomincia ciclicamente il file quando raggiunge la fine |
-| `--udp-timeout-ms N` | Timeout in millisecondi per una ricezione UDP |
+| `--file PATH` | Use a CSV file as the source |
+| `--udp PORT` | Listen for UDP datagrams on a port |
+| `--resolution DEGREES` | Resolution from `0.1` to `1.0` |
+| `--start-angle DEGREES` | Initial scan angle |
+| `--capacity N` | Maximum number of scans in the buffer |
+| `--no-repeat` | Stop when a file reaches its end |
+| `--repeat` | Restart a file from the beginning when it ends |
+| `--udp-timeout-ms N` | UDP receive timeout in milliseconds |
 
-Comandi interattivi:
+## Interactive commands
 
-| Comando | Comportamento |
+| Command | Behavior |
 |---|---|
-| `1` | Acquisisce e inserisce una scansione |
-| `2` | Stampa la scansione più recente |
-| `3` | Estrae la scansione meno recente |
-| `4` | Cerca la distanza a un angolo |
-| `5` | Svuota il buffer |
-| `6` | Esce |
+| `1` | Acquire and insert a scan |
+| `2` | Print the latest scan |
+| `3` | Extract the oldest scan |
+| `4` | Query a distance by angle |
+| `5` | Clear the buffer |
+| `6` | Exit |
 
-Se la misura richiesta è assente, il programma restituisce esplicitamente
-`No valid measurement at this angle` invece di confonderla con una distanza
-pari a zero.
+If no valid measurement exists at an angle, the program reports
+`No valid measurement at this angle` instead of interpreting it as a distance
+of zero.
 
-## Struttura
+## Project structure
 
 ```text
 LidarDriver/
+├── .github/workflows/ci.yml
 ├── CMakeLists.txt
 ├── data/data.txt
 ├── include/
 │   ├── DataSource.h
+│   ├── Exceptions.h
 │   ├── FileUtils.h
-│   └── LidarDriver.h
+│   ├── LidarDriver.h
+│   └── Logger.h
 ├── src/
 │   ├── DataSource.cpp
 │   ├── FileUtils.cpp
@@ -135,19 +144,15 @@ LidarDriver/
 └── tests/LidarDriverTests.cpp
 ```
 
-## Limiti attuali
+## Current limitations
 
-Il protocollo UDP non fornisce una coda affidabile: pacchetti duplicati, fuori
-ordine o persi devono essere gestiti dal sensore o da un adattatore dedicato.
-Per integrare un sensore specifico è sufficiente aggiungere un parser o una
-nuova implementazione di `ScanSource`, senza modificare `LidarDriver`.
+UDP does not provide reliable delivery. Duplicate, out-of-order, or missing
+packets must be handled by the sensor or a dedicated protocol adapter.
+Noise filtering, sensor synchronization, and graphical visualization are not
+included in this prototype.
 
-Il progetto non esegue ancora filtraggio del rumore, sincronizzazione tra
-sensori o visualizzazione grafica; queste funzionalità possono essere aggiunte
-sopra la struttura attuale .
+## Authors
 
-## Autori
-
-- Larisa Apostol - matricola 2101805
-- Anna Cazzadore - matricola 2101825
-- Giada Ruggero - matricola 2101765
+- Larisa Apostol - ID 2101805
+- Anna Cazzadore - ID 2101825
+- Giada Ruggero - ID 2101765
