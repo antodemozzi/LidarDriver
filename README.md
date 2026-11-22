@@ -5,6 +5,11 @@ UDP datagrams and stores them in a configurable circular FIFO buffer. The
 project provides a lightweight foundation for integrating real sensors while
 keeping acquisition, validation, and driver logic separate.
 
+> **Project status:** this repository is a software simulation and protocol
+> prototype, not a production driver for a physical LiDAR device. The included
+> `data/data.txt` is synthetic CSV data, and the UDP source demonstrates a
+> possible sensor-facing integration without connecting to real hardware.
+
 ## Features
 
 - CSV file and UDP datagram sources;
