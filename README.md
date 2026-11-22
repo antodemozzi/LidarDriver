@@ -144,7 +144,7 @@ nuova implementazione di `ScanSource`, senza modificare `LidarDriver`.
 
 Il progetto non esegue ancora filtraggio del rumore, sincronizzazione tra
 sensori o visualizzazione grafica; queste funzionalità possono essere aggiunte
-sopra la struttura attuale.
+sopra la struttura attuale .
 
 ## Autori
 
